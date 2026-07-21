@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from app.edgar import COMPANIES, EdgarError, fetch_financials
 from ratio_analyzer import (
     current_ratio,
     debt_to_equity,
@@ -39,6 +40,12 @@ class Ratios(BaseModel):
     current_ratio: float
 
 
+class CompanyReport(Ratios):
+    revenue: float
+    net_income: float
+    shareholders_equity: float
+
+
 @app.post("/analyze", response_model=Ratios)
 def analyze(financials: Financials):
     if financials.shareholders_equity == 0:
@@ -53,6 +60,36 @@ def analyze(financials: Financials):
         return_on_equity=return_on_equity(f),
         debt_to_equity=debt_to_equity(f),
         current_ratio=current_ratio(f),
+    )
+
+
+@app.get("/companies")
+def list_companies():
+    return [{"key": key, "name": info["name"]} for key, info in COMPANIES.items()]
+
+
+@app.get("/companies/{key}/analyze", response_model=CompanyReport)
+def analyze_company(key: str):
+    if key not in COMPANIES:
+        raise HTTPException(status_code=404, detail="Unknown company")
+    try:
+        f = fetch_financials(key)
+    except EdgarError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    if f["shareholders_equity"] == 0:
+        raise HTTPException(
+            status_code=502, detail="Shareholders' equity cannot be zero"
+        )
+    return CompanyReport(
+        company=f["company"],
+        period=f["period"],
+        net_profit_margin=net_profit_margin(f),
+        return_on_equity=return_on_equity(f),
+        debt_to_equity=debt_to_equity(f),
+        current_ratio=current_ratio(f),
+        revenue=f["revenue"],
+        net_income=f["net_income"],
+        shareholders_equity=f["shareholders_equity"],
     )
 
 

@@ -21,7 +21,8 @@
   color: var(--text);
 }
 
-.form input {
+.form input,
+.form select {
   font: inherit;
   padding: 8px 10px;
   border: 1px solid var(--border);
@@ -58,6 +59,12 @@
 
 .results {
   margin-top: 24px;
+}
+
+.note {
+  margin: -12px 0 20px;
+  font-size: 13px;
+  color: var(--text);
 }
 
 .stats {

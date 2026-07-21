@@ -1,0 +1,150 @@
+"""SEC EDGAR data fetching for the fixed company dropdown.
+
+Resolves XBRL tag fallbacks into the field names ratio_analyzer.py's
+functions already expect (revenue, net_income, shareholders_equity,
+total_debt, current_assets, current_liabilities) — those functions are
+never touched.
+"""
+
+import threading
+import time
+from datetime import date
+
+import requests
+
+USER_AGENT = "ratio-analyzer nmagera07@gmail.com"
+_MIN_INTERVAL = 1 / 10  # SEC EDGAR: max 10 requests/second
+
+_rate_lock = threading.Lock()
+_last_request = 0.0
+
+
+class EdgarError(Exception):
+    pass
+
+
+COMPANIES = {
+    "apple": {"name": "Apple Inc.", "cik": "0000320193"},
+    "netflix": {"name": "Netflix, Inc.", "cik": "0001065280"},
+    "microsoft": {"name": "Microsoft Corporation", "cik": "0000789019"},
+    "coca-cola": {"name": "The Coca-Cola Company", "cik": "0000021344"},
+    "mcdonalds": {"name": "McDonald's Corporation", "cik": "0000063908"},
+}
+
+# Tried in order; first tag with a value at the anchor period wins.
+REVENUE_TAGS = [
+    "Revenues",
+    "RevenueFromContractWithCustomerExcludingAssessedTax",
+    "SalesRevenueNet",
+]
+NET_INCOME_TAGS = ["NetIncomeLoss", "ProfitLoss"]
+EQUITY_TAGS = [
+    "StockholdersEquity",
+    "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest",
+]
+CURRENT_ASSETS_TAGS = ["AssetsCurrent"]
+CURRENT_LIABILITIES_TAGS = ["LiabilitiesCurrent"]
+ANCHOR_TAGS = ["Assets"]  # always present; its latest 10-K end date sets the period
+
+# Interest-bearing debt only (see README) — summed from components rather
+# than a single tag, since some filers also report a combined "LongTermDebt"
+# tag whose meaning is inconsistent across companies (sometimes total debt,
+# sometimes just the noncurrent portion), so it's deliberately not used here.
+DEBT_NONCURRENT_TAGS = ["LongTermDebtNoncurrent", "LongTermDebtAndCapitalLeaseObligations"]
+DEBT_CURRENT_TAGS = [
+    "LongTermDebtCurrent",
+    "LongTermDebtAndCapitalLeaseObligationsCurrent",
+    "DebtCurrent",
+]
+DEBT_SHORT_TERM_TAGS = ["CommercialPaper", "ShortTermBorrowings"]
+
+
+def _get(url):
+    global _last_request
+    with _rate_lock:
+        wait = _MIN_INTERVAL - (time.monotonic() - _last_request)
+        if wait > 0:
+            time.sleep(wait)
+        resp = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=15)
+        _last_request = time.monotonic()
+    if resp.status_code != 200:
+        raise EdgarError(f"SEC EDGAR request failed: {resp.status_code}")
+    return resp.json()
+
+
+def _entries(facts, tag):
+    return facts.get(tag, {}).get("units", {}).get("USD", [])
+
+
+def _annual_10k(entries):
+    """10-K filings only; for duration facts, keep annual (not quarterly) periods."""
+    out = []
+    for e in entries:
+        if e.get("form") != "10-K":
+            continue
+        if "start" in e:
+            days = (date.fromisoformat(e["end"]) - date.fromisoformat(e["start"])).days
+            if not (330 <= days <= 400):
+                continue
+        out.append(e)
+    return out
+
+
+def _anchor_period(facts):
+    for tag in ANCHOR_TAGS:
+        entries = _annual_10k(_entries(facts, tag))
+        if entries:
+            latest = max(entries, key=lambda e: e["end"])
+            return latest["end"], latest.get("fy")
+    raise EdgarError("No annual 10-K data found")
+
+
+def _value_at(facts, tags, end):
+    for tag in tags:
+        for e in _annual_10k(_entries(facts, tag)):
+            if e["end"] == end:
+                return e["val"]
+    return None
+
+
+def _debt_at(facts, end):
+    """Sum interest-bearing debt components present at the anchor date."""
+    slots = [DEBT_NONCURRENT_TAGS, DEBT_CURRENT_TAGS, DEBT_SHORT_TERM_TAGS]
+    total = 0
+    found = False
+    for tags in slots:
+        value = _value_at(facts, tags, end)
+        if value is not None:
+            total += value
+            found = True
+    return total if found else None
+
+
+def fetch_financials(key):
+    """Fetch one dropdown company's latest 10-K financials from SEC EDGAR."""
+    company = COMPANIES.get(key)
+    if company is None:
+        raise EdgarError(f"Unknown company: {key}")
+
+    data = _get(f"https://data.sec.gov/api/xbrl/companyfacts/CIK{company['cik']}.json")
+    facts = data.get("facts", {}).get("us-gaap", {})
+
+    end, fy = _anchor_period(facts)
+
+    values = {
+        "revenue": _value_at(facts, REVENUE_TAGS, end),
+        "net_income": _value_at(facts, NET_INCOME_TAGS, end),
+        "shareholders_equity": _value_at(facts, EQUITY_TAGS, end),
+        "total_debt": _debt_at(facts, end),
+        "current_assets": _value_at(facts, CURRENT_ASSETS_TAGS, end),
+        "current_liabilities": _value_at(facts, CURRENT_LIABILITIES_TAGS, end),
+    }
+    missing = [k for k, v in values.items() if v is None]
+    if missing:
+        raise EdgarError(f"Missing metrics for {company['name']}: {', '.join(missing)}")
+
+    return {
+        "company": company["name"],
+        "period": f"FY {fy}" if fy else f"FY {end[:4]}",
+        **{k: v / 1_000_000 for k, v in values.items()},  # to $M, matching the rest of the app
+    }
