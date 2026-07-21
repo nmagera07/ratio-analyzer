@@ -14,7 +14,7 @@ A staged plan, not a to-do list to rush through. Each stage should feel solid an
 
 Natural next step. Low risk, extends what's already working.
 
-- [ ] Expand dropdown from 5 companies to 15-20, spanning different industries (a bank's balance sheet looks nothing like Netflix's — good for seeing how ratios behave differently by sector)
+- [x] Expand dropdown from 5 companies to 15-20, spanning different industries (a bank's balance sheet looks nothing like Netflix's — good for seeing how ratios behave differently by sector) — 16 companies now: added JPMorgan Chase, Walmart, Costco, Visa, Johnson & Johnson, Chevron, Procter & Gamble, Home Depot, Boeing, Starbucks, Nike. JPMorgan (a bank) has no current assets/liabilities at all, so `current_ratio` is now nullable and shows "N/A" instead of erroring.
 - [ ] Add more ratios: gross margin, operating margin, quick ratio, asset turnover — same pattern as the existing four
 - [ ] Multi-year view per company (SEC's API already returns years of history — currently only the most recent 10-K is used)
 

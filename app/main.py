@@ -1,3 +1,5 @@
+from typing import Optional
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -44,6 +46,9 @@ class CompanyReport(Ratios):
     revenue: float
     net_income: float
     shareholders_equity: float
+    # Filers with an unclassified balance sheet (e.g. banks) don't report
+    # current assets/liabilities, so this can be unavailable.
+    current_ratio: Optional[float] = None
 
 
 @app.post("/analyze", response_model=Ratios)
@@ -80,13 +85,14 @@ def analyze_company(key: str):
         raise HTTPException(
             status_code=502, detail="Shareholders' equity cannot be zero"
         )
+    has_current = f["current_assets"] is not None and f["current_liabilities"] is not None
     return CompanyReport(
         company=f["company"],
         period=f["period"],
         net_profit_margin=net_profit_margin(f),
         return_on_equity=return_on_equity(f),
         debt_to_equity=debt_to_equity(f),
-        current_ratio=current_ratio(f),
+        current_ratio=current_ratio(f) if has_current else None,
         revenue=f["revenue"],
         net_income=f["net_income"],
         shareholders_equity=f["shareholders_equity"],

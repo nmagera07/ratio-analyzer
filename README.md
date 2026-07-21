@@ -46,6 +46,8 @@ npm run dev -- --port 5175
 ## API
 
 - `POST /analyze` — takes a company's financials, returns the four ratios
+- `GET /companies` — the fixed dropdown of companies with live SEC EDGAR data
+- `GET /companies/{key}/analyze` — pulls that company's latest 10-K from SEC EDGAR and returns its financials + ratios. `current_ratio` is `null` for filers with an unclassified balance sheet (e.g. banks), which don't report current assets/liabilities.
 
 ## Deploying
 

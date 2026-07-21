@@ -4,7 +4,7 @@ import "./App.css";
 const API_BASE = import.meta.env.PROD ? "/api" : "http://localhost:8001";
 
 const pct = (value) => `${(value * 100).toFixed(1)}%`;
-const ratio = (value) => `${value.toFixed(2)}x`;
+const ratio = (value) => (value == null ? "N/A" : `${value.toFixed(2)}x`);
 const millions = (value) => `$${value.toLocaleString()}M`;
 
 const DEFAULT_FORM = {

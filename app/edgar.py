@@ -33,6 +33,17 @@ COMPANIES = {
     "microsoft": {"name": "Microsoft Corporation", "cik": "0000789019"},
     "coca-cola": {"name": "The Coca-Cola Company", "cik": "0000021344"},
     "mcdonalds": {"name": "McDonald's Corporation", "cik": "0000063908"},
+    "jpmorgan": {"name": "JPMorgan Chase & Co.", "cik": "0000019617"},
+    "walmart": {"name": "Walmart Inc.", "cik": "0000104169"},
+    "costco": {"name": "Costco Wholesale Corporation", "cik": "0000909832"},
+    "visa": {"name": "Visa Inc.", "cik": "0001403161"},
+    "johnson-johnson": {"name": "Johnson & Johnson", "cik": "0000200406"},
+    "chevron": {"name": "Chevron Corporation", "cik": "0000093410"},
+    "procter-gamble": {"name": "The Procter & Gamble Company", "cik": "0000080424"},
+    "home-depot": {"name": "The Home Depot, Inc.", "cik": "0000354950"},
+    "boeing": {"name": "The Boeing Company", "cik": "0000012927"},
+    "starbucks": {"name": "Starbucks Corporation", "cik": "0000829224"},
+    "nike": {"name": "Nike, Inc.", "cik": "0000320187"},
 }
 
 # Tried in order; first tag with a value at the anchor period wins.
@@ -145,17 +156,25 @@ def fetch_financials(key):
         "net_income": _value_at(facts, NET_INCOME_TAGS, end),
         "shareholders_equity": _value_at(facts, EQUITY_TAGS, end),
         "total_debt": _debt_at(facts, end),
-        "current_assets": _value_at(facts, CURRENT_ASSETS_TAGS, end),
-        "current_liabilities": _value_at(facts, CURRENT_LIABILITIES_TAGS, end),
     }
     missing = [k for k, v in values.items() if v is None]
     if missing:
         raise EdgarError(f"Missing metrics for {company['name']}: {', '.join(missing)}")
 
+    # Banks and similar filers use an unclassified balance sheet and don't
+    # report these at all — current_ratio is left unavailable for them
+    # rather than treated as an error.
+    current_assets = _value_at(facts, CURRENT_ASSETS_TAGS, end)
+    current_liabilities = _value_at(facts, CURRENT_LIABILITIES_TAGS, end)
+
     result = {
         "company": company["name"],
         "period": f"FY {fy}" if fy else f"FY {end[:4]}",
         **{k: v / 1_000_000 for k, v in values.items()},  # to $M, matching the rest of the app
+        "current_assets": current_assets / 1_000_000 if current_assets is not None else None,
+        "current_liabilities": (
+            current_liabilities / 1_000_000 if current_liabilities is not None else None
+        ),
     }
     with _cache_lock:
         _cache[key] = (time.monotonic(), result)
