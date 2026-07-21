@@ -18,6 +18,10 @@ _MIN_INTERVAL = 1 / 10  # SEC EDGAR: max 10 requests/second
 _rate_lock = threading.Lock()
 _last_request = 0.0
 
+_CACHE_TTL = 3600  # seconds; 10-K data changes at most quarterly
+_cache_lock = threading.Lock()
+_cache = {}  # key -> (fetched_at, financials)
+
 
 class EdgarError(Exception):
     pass
@@ -126,6 +130,11 @@ def fetch_financials(key):
     if company is None:
         raise EdgarError(f"Unknown company: {key}")
 
+    with _cache_lock:
+        cached = _cache.get(key)
+        if cached and time.monotonic() - cached[0] < _CACHE_TTL:
+            return cached[1]
+
     data = _get(f"https://data.sec.gov/api/xbrl/companyfacts/CIK{company['cik']}.json")
     facts = data.get("facts", {}).get("us-gaap", {})
 
@@ -143,8 +152,11 @@ def fetch_financials(key):
     if missing:
         raise EdgarError(f"Missing metrics for {company['name']}: {', '.join(missing)}")
 
-    return {
+    result = {
         "company": company["name"],
         "period": f"FY {fy}" if fy else f"FY {end[:4]}",
         **{k: v / 1_000_000 for k, v in values.items()},  # to $M, matching the rest of the app
     }
+    with _cache_lock:
+        _cache[key] = (time.monotonic(), result)
+    return result
