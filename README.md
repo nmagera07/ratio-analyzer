@@ -2,7 +2,7 @@
 
 A small financial ratio analyzer: enter a company's key financials and see net profit margin, return on equity, debt-to-equity, and current ratio — plus a side-by-side comparison table as you add more companies.
 
-**Live:** https://ratio-web-1056739524668.us-central1.run.app
+**Live:** https://ratio-web-211392956944.us-central1.run.app
 
 ## Ratio definitions
 
@@ -50,8 +50,8 @@ npm run dev -- --port 5175
 ## Deploying
 
 ```
-gcloud run deploy ratio-api --source . --region us-central1 --allow-unauthenticated
-gcloud run deploy ratio-web --source frontend --region us-central1 --allow-unauthenticated
+gcloud run deploy ratio-api --source . --region us-central1 --allow-unauthenticated --project=ratio-analyzer-app
+gcloud run deploy ratio-web --source frontend --region us-central1 --allow-unauthenticated --project=ratio-analyzer-app
 ```
 
 `frontend/nginx.conf` hardcodes the backend's Cloud Run URL for the `/api/` proxy — update it if the backend is redeployed to a new URL.
