@@ -31,6 +31,7 @@ Where a ratio starts becoming a judgment, not just a number.
 Most valuable, most advanced. Someday-tier, not urgent.
 
 - [ ] Auto-flag unusual ratios and explain likely causes (e.g. "ROE over 100% often indicates heavy buybacks or high leverage — check debt-to-equity") — essentially automating the Apple-buyback insight from manual analysis
+- [ ] Bank-specific ratios: detect when a company is a bank (unclassified balance sheet — no current assets/liabilities, per the JPMorgan case in Stage A) and switch to metrics analysts actually use for banks — capital adequacy ratio, loan-to-deposit ratio — instead of just showing "N/A" for current ratio
 
 ## Explicitly NOT planned yet
 
