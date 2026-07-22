@@ -10,13 +10,13 @@ A staged plan, not a to-do list to rush through. Each stage should feel solid an
 - In-memory cache (1hr TTL) on the FastAPI backend — no database
 - React/Vite frontend, FastAPI backend, deployed on Google Cloud Run (scale-to-zero, no persistent server)
 
-## Stage A — Depth on what exists
+## Stage A — Depth on what exists (complete)
 
 Natural next step. Low risk, extends what's already working.
 
 - [x] Expand dropdown from 5 companies to 15-20, spanning different industries (a bank's balance sheet looks nothing like Netflix's — good for seeing how ratios behave differently by sector) — 16 companies now: added JPMorgan Chase, Walmart, Costco, Visa, Johnson & Johnson, Chevron, Procter & Gamble, Home Depot, Boeing, Starbucks, Nike. JPMorgan (a bank) has no current assets/liabilities at all, so `current_ratio` is now nullable and shows "N/A" instead of erroring.
 - [x] Add more ratios: gross margin, operating margin, quick ratio, asset turnover — same pattern as the existing four. Like current ratio, gross/operating margin and quick ratio are nullable and show "N/A" for companies without a cost-of-goods-sold concept (banks, Visa, McDonald's/Starbucks as franchisors). Verified against real EDGAR data for all 16 companies, including Boeing's quick ratio (0.40x) diverging sharply from its current ratio (1.19x) due to ~$85B of aircraft-program inventory.
-- [ ] Multi-year view per company (SEC's API already returns years of history — currently only the most recent 10-K is used)
+- [x] Multi-year view per company (SEC's API already returns years of history — currently only the most recent 10-K is used) — new `GET /companies/{key}/history` returns up to 5 most recent fiscal years; frontend has a "View 5-year history" button showing a per-company table (separate from the cross-company comparison table). Deduping periods required a fix: SEC's `fy` field reflects the *filing's* year, not necessarily the period's — a prior year shown as a comparative in a later 10-K inherits that later filing's fy label, so periods are now deduped to the *earliest* filing (the period's original 10-K) rather than the latest. Sets up Stage B's trend-chart item — the data's there now, just not charted yet.
 
 ## Stage B — Comparison & context
 

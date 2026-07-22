@@ -1,10 +1,10 @@
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from app.edgar import COMPANIES, EdgarError, fetch_financials
+from app.edgar import COMPANIES, EdgarError, fetch_financial_history, fetch_financials
 from ratio_analyzer import (
     asset_turnover,
     current_ratio,
@@ -46,23 +46,11 @@ class CompanyReport(BaseModel):
     asset_turnover: Optional[float] = None
 
 
-@app.get("/companies")
-def list_companies():
-    return [{"key": key, "name": info["name"]} for key, info in COMPANIES.items()]
-
-
-@app.get("/companies/{key}/analyze", response_model=CompanyReport)
-def analyze_company(key: str):
-    if key not in COMPANIES:
-        raise HTTPException(status_code=404, detail="Unknown company")
-    try:
-        f = fetch_financials(key)
-    except EdgarError as e:
-        raise HTTPException(status_code=502, detail=str(e))
+def _to_report(f):
+    """Build a CompanyReport from one period's financials dict, or None if
+    shareholders' equity is zero (ROE would be undefined)."""
     if f["shareholders_equity"] == 0:
-        raise HTTPException(
-            status_code=502, detail="Shareholders' equity cannot be zero"
-        )
+        return None
     has_current = f["current_assets"] is not None and f["current_liabilities"] is not None
     return CompanyReport(
         company=f["company"],
@@ -79,6 +67,43 @@ def analyze_company(key: str):
         net_income=f["net_income"],
         shareholders_equity=f["shareholders_equity"],
     )
+
+
+@app.get("/companies")
+def list_companies():
+    return [{"key": key, "name": info["name"]} for key, info in COMPANIES.items()]
+
+
+@app.get("/companies/{key}/analyze", response_model=CompanyReport)
+def analyze_company(key: str):
+    if key not in COMPANIES:
+        raise HTTPException(status_code=404, detail="Unknown company")
+    try:
+        f = fetch_financials(key)
+    except EdgarError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    report = _to_report(f)
+    if report is None:
+        raise HTTPException(
+            status_code=502, detail="Shareholders' equity cannot be zero"
+        )
+    return report
+
+
+@app.get("/companies/{key}/history", response_model=List[CompanyReport])
+def company_history(key: str):
+    if key not in COMPANIES:
+        raise HTTPException(status_code=404, detail="Unknown company")
+    try:
+        years = fetch_financial_history(key)
+    except EdgarError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    reports = [r for r in (_to_report(f) for f in years) if r is not None]
+    if not reports:
+        raise HTTPException(
+            status_code=502, detail="No usable annual data found"
+        )
+    return reports
 
 
 @app.get("/")

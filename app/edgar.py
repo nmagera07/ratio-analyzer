@@ -19,8 +19,10 @@ _rate_lock = threading.Lock()
 _last_request = 0.0
 
 _CACHE_TTL = 3600  # seconds; 10-K data changes at most quarterly
-_cache_lock = threading.Lock()
-_cache = {}  # key -> (fetched_at, financials)
+_facts_cache_lock = threading.Lock()
+_facts_cache = {}  # cik -> (fetched_at, facts)
+
+HISTORY_YEARS = 5
 
 
 class EdgarError(Exception):
@@ -59,7 +61,7 @@ EQUITY_TAGS = [
 ]
 CURRENT_ASSETS_TAGS = ["AssetsCurrent"]
 CURRENT_LIABILITIES_TAGS = ["LiabilitiesCurrent"]
-ANCHOR_TAGS = ["Assets"]  # always present; its latest 10-K end date sets the period
+ANCHOR_TAGS = ["Assets"]  # always present; its 10-K end dates set the reporting periods
 
 # Interest-bearing debt only (see README) — summed from components rather
 # than a single tag, since some filers also report a combined "LongTermDebt"
@@ -101,6 +103,21 @@ def _get(url):
     return resp.json()
 
 
+def _get_facts(company):
+    cik = company["cik"]
+    with _facts_cache_lock:
+        cached = _facts_cache.get(cik)
+        if cached and time.monotonic() - cached[0] < _CACHE_TTL:
+            return cached[1]
+
+    data = _get(f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json")
+    facts = data.get("facts", {}).get("us-gaap", {})
+
+    with _facts_cache_lock:
+        _facts_cache[cik] = (time.monotonic(), facts)
+    return facts
+
+
 def _entries(facts, tag):
     return facts.get(tag, {}).get("units", {}).get("USD", [])
 
@@ -119,13 +136,28 @@ def _annual_10k(entries):
     return out
 
 
-def _anchor_period(facts):
+def _annual_periods(facts, limit):
+    """Up to `limit` most recent distinct fiscal year-end dates, newest first.
+
+    A given end date can appear in multiple filings (10-Ks show prior-year
+    comparatives), so entries are deduped by end date. The *earliest* filed
+    entry is kept, since that's always the period's original 10-K — a later
+    filing repeating it as a comparative inherits that later filing's `fy`
+    label, which would otherwise mislabel the period (e.g. FY2024 figures
+    tagged "FY 2025" because they're shown as last year's comparative in
+    the FY2025 10-K).
+    """
     for tag in ANCHOR_TAGS:
         entries = _annual_10k(_entries(facts, tag))
         if entries:
-            latest = max(entries, key=lambda e: e["end"])
-            return latest["end"], latest.get("fy"), latest["val"]
-    raise EdgarError("No annual 10-K data found")
+            by_end = {}
+            for e in entries:
+                existing = by_end.get(e["end"])
+                if existing is None or e["filed"] < existing["filed"]:
+                    by_end[e["end"]] = e
+            ordered = sorted(by_end.values(), key=lambda e: e["end"], reverse=True)
+            return ordered[:limit]
+    return []
 
 
 def _value_at(facts, tags, end):
@@ -137,7 +169,7 @@ def _value_at(facts, tags, end):
 
 
 def _debt_at(facts, end):
-    """Sum interest-bearing debt components present at the anchor date."""
+    """Sum interest-bearing debt components present at the given period end."""
     slots = [DEBT_NONCURRENT_TAGS, DEBT_CURRENT_TAGS, DEBT_SHORT_TERM_TAGS]
     total = 0
     found = False
@@ -171,60 +203,79 @@ def _operating_income_at(facts, end):
     return None
 
 
-def fetch_financials(key):
-    """Fetch one dropdown company's latest 10-K financials from SEC EDGAR."""
-    company = COMPANIES.get(key)
-    if company is None:
-        raise EdgarError(f"Unknown company: {key}")
-
-    with _cache_lock:
-        cached = _cache.get(key)
-        if cached and time.monotonic() - cached[0] < _CACHE_TTL:
-            return cached[1]
-
-    data = _get(f"https://data.sec.gov/api/xbrl/companyfacts/CIK{company['cik']}.json")
-    facts = data.get("facts", {}).get("us-gaap", {})
-
-    end, fy, total_assets = _anchor_period(facts)
-
+def _build_period(facts, end, fy):
+    """Build the financials dict for one fiscal year end, or None if core
+    metrics (revenue, net income, equity, debt, total assets) are missing.
+    """
     values = {
         "revenue": _value_at(facts, REVENUE_TAGS, end),
         "net_income": _value_at(facts, NET_INCOME_TAGS, end),
         "shareholders_equity": _value_at(facts, EQUITY_TAGS, end),
         "total_debt": _debt_at(facts, end),
-        "total_assets": total_assets,
+        "total_assets": _value_at(facts, ANCHOR_TAGS, end),
     }
-    missing = [k for k, v in values.items() if v is None]
-    if missing:
-        raise EdgarError(f"Missing metrics for {company['name']}: {', '.join(missing)}")
+    if any(v is None for v in values.values()):
+        return None
 
     # Some filers don't report these at all: banks use an unclassified
     # balance sheet (no current assets/liabilities), and companies without
     # a cost-of-goods-sold concept (banks, payment networks, franchisors)
     # have no gross profit or operating income tag either. Left unavailable
     # for them rather than treated as an error.
-    current_assets = _value_at(facts, CURRENT_ASSETS_TAGS, end)
-    current_liabilities = _value_at(facts, CURRENT_LIABILITIES_TAGS, end)
-    gross_profit = _gross_profit_at(facts, end)
-    operating_income = _operating_income_at(facts, end)
+    optional_values = {
+        "current_assets": _value_at(facts, CURRENT_ASSETS_TAGS, end),
+        "current_liabilities": _value_at(facts, CURRENT_LIABILITIES_TAGS, end),
+        "gross_profit": _gross_profit_at(facts, end),
+        "operating_income": _operating_income_at(facts, end),
+    }
     # Missing inventory means the filer genuinely has none (services,
     # payments, streaming) rather than that the data is unavailable.
     inventory = _value_at(facts, INVENTORY_TAGS, end) or 0
 
-    optional_values = {
-        "current_assets": current_assets,
-        "current_liabilities": current_liabilities,
-        "gross_profit": gross_profit,
-        "operating_income": operating_income,
-    }
-
-    result = {
-        "company": company["name"],
+    return {
         "period": f"FY {fy}" if fy else f"FY {end[:4]}",
         **{k: v / 1_000_000 for k, v in values.items()},  # to $M, matching the rest of the app
         **{k: (v / 1_000_000 if v is not None else None) for k, v in optional_values.items()},
         "inventory": inventory / 1_000_000,
     }
-    with _cache_lock:
-        _cache[key] = (time.monotonic(), result)
-    return result
+
+
+def fetch_financials(key):
+    """Fetch one dropdown company's latest 10-K financials from SEC EDGAR."""
+    company = COMPANIES.get(key)
+    if company is None:
+        raise EdgarError(f"Unknown company: {key}")
+
+    facts = _get_facts(company)
+    periods = _annual_periods(facts, limit=1)
+    if not periods:
+        raise EdgarError(f"No annual 10-K data found for {company['name']}")
+
+    latest = periods[0]
+    period = _build_period(facts, latest["end"], latest.get("fy"))
+    if period is None:
+        raise EdgarError(f"Missing metrics for {company['name']}")
+
+    return {"company": company["name"], **period}
+
+
+def fetch_financial_history(key, years=HISTORY_YEARS):
+    """Fetch up to `years` of a dropdown company's annual financials, newest first."""
+    company = COMPANIES.get(key)
+    if company is None:
+        raise EdgarError(f"Unknown company: {key}")
+
+    facts = _get_facts(company)
+    periods = _annual_periods(facts, limit=years)
+    if not periods:
+        raise EdgarError(f"No annual 10-K data found for {company['name']}")
+
+    history = []
+    for p in periods:
+        built = _build_period(facts, p["end"], p.get("fy"))
+        if built is not None:
+            history.append({"company": company["name"], **built})
+
+    if not history:
+        raise EdgarError(f"Missing metrics for {company['name']}")
+    return history

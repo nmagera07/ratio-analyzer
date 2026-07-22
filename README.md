@@ -53,6 +53,7 @@ npm run dev -- --port 5175
 
 - `GET /companies` — the fixed dropdown of companies with live SEC EDGAR data
 - `GET /companies/{key}/analyze` — pulls that company's latest 10-K from SEC EDGAR and returns its financials + ratios. Some ratios are `null` for filers they don't apply to (e.g. `current_ratio` for banks, which use an unclassified balance sheet).
+- `GET /companies/{key}/history` — same shape, as a list of up to 5 most recent fiscal years, newest first
 
 ## Deploying
 
