@@ -7,30 +7,7 @@ const pct = (value) => (value == null ? "N/A" : `${(value * 100).toFixed(1)}%`);
 const ratio = (value) => (value == null ? "N/A" : `${value.toFixed(2)}x`);
 const millions = (value) => `$${value.toLocaleString()}M`;
 
-function toNumberOrUndefined(value) {
-  if (value === "" || value === null || value === undefined) return undefined;
-  return Number(value);
-}
-
-const DEFAULT_FORM = {
-  company: "Netflix, Inc.",
-  period: "FY 2025",
-  revenue: 45200,
-  net_income: 11000,
-  shareholders_equity: 26615,
-  total_debt: 14463,
-  current_assets: 13020,
-  current_liabilities: 10981,
-  total_assets: 55597,
-  gross_profit: 21908,
-  operating_income: 13327,
-  inventory: 0,
-};
-
 export default function App() {
-  const [form, setForm] = useState(DEFAULT_FORM);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
   const [companies, setCompanies] = useState([]);
 
   const [edgarOptions, setEdgarOptions] = useState([]);
@@ -47,10 +24,6 @@ export default function App() {
       })
       .catch(() => setEdgarError("Could not load company list"));
   }, []);
-
-  function updateField(field, value) {
-    setForm((prev) => ({ ...prev, [field]: value }));
-  }
 
   async function fetchFromEdgar(e) {
     e.preventDefault();
@@ -74,66 +47,13 @@ export default function App() {
     }
   }
 
-  async function analyze(e) {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-
-    const payload = {
-      ...form,
-      revenue: Number(form.revenue),
-      net_income: Number(form.net_income),
-      shareholders_equity: Number(form.shareholders_equity),
-      total_debt: Number(form.total_debt),
-      current_assets: Number(form.current_assets),
-      current_liabilities: Number(form.current_liabilities),
-      total_assets: toNumberOrUndefined(form.total_assets),
-      gross_profit: toNumberOrUndefined(form.gross_profit),
-      operating_income: toNumberOrUndefined(form.operating_income),
-      inventory: toNumberOrUndefined(form.inventory),
-    };
-
-    try {
-      const res = await fetch(`${API_BASE}/analyze`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const body = await res.json();
-      if (!res.ok) {
-        throw new Error(body.detail || "Analysis failed");
-      }
-      setCompanies((prev) => [
-        ...prev.filter((c) => c.company !== payload.company),
-        { ...payload, ...body },
-      ]);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  const numberFields = [
-    ["revenue", "Revenue ($M)", true],
-    ["net_income", "Net income ($M)", true],
-    ["shareholders_equity", "Shareholders equity ($M)", true],
-    ["total_debt", "Total debt ($M)", true],
-    ["current_assets", "Current assets ($M)", true],
-    ["current_liabilities", "Current liabilities ($M)", true],
-    ["total_assets", "Total assets ($M)", false],
-    ["gross_profit", "Gross profit ($M)", false],
-    ["operating_income", "Operating income ($M)", false],
-    ["inventory", "Inventory ($M)", false],
-  ];
-
   return (
     <div className="page">
       <h1>Ratio Analyzer</h1>
 
       <form className="form" onSubmit={fetchFromEdgar}>
         <label>
-          Load from SEC EDGAR
+          Company
           <select
             value={edgarKey}
             onChange={(e) => setEdgarKey(e.target.value)}
@@ -150,40 +70,6 @@ export default function App() {
         </button>
       </form>
       {edgarError && <p className="error">{edgarError}</p>}
-
-      <form className="form" onSubmit={analyze}>
-        <label>
-          Company
-          <input
-            value={form.company}
-            onChange={(e) => updateField("company", e.target.value)}
-            required
-          />
-        </label>
-        <label>
-          Period
-          <input
-            value={form.period}
-            onChange={(e) => updateField("period", e.target.value)}
-          />
-        </label>
-        {numberFields.map(([field, label, required]) => (
-          <label key={field}>
-            {label}
-            <input
-              type="number"
-              value={form[field]}
-              onChange={(e) => updateField(field, e.target.value)}
-              required={required}
-            />
-          </label>
-        ))}
-        <button type="submit" disabled={loading}>
-          {loading ? "Analyzing…" : "Analyze"}
-        </button>
-      </form>
-
-      {error && <p className="error">{error}</p>}
 
       {companies.length > 0 && (
         <div className="results">

@@ -2,7 +2,7 @@ from typing import Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from app.edgar import COMPANIES, EdgarError, fetch_financials
 from ratio_analyzer import (
@@ -26,66 +26,24 @@ app.add_middleware(
 )
 
 
-class Financials(BaseModel):
-    company: str
-    period: str = ""
-    revenue: float = Field(gt=0, description="$M")
-    net_income: float
-    shareholders_equity: float
-    total_debt: float = Field(ge=0)
-    current_assets: float = Field(ge=0)
-    current_liabilities: float = Field(gt=0)
-    total_assets: Optional[float] = Field(default=None, ge=0)
-    gross_profit: Optional[float] = None
-    operating_income: Optional[float] = None
-    inventory: Optional[float] = Field(default=None, ge=0)
-
-
-class Ratios(BaseModel):
+class CompanyReport(BaseModel):
     company: str
     period: str
+    revenue: float
+    net_income: float
+    shareholders_equity: float
     net_profit_margin: float
     return_on_equity: float
     debt_to_equity: float
-    current_ratio: float
-    # Not every company/entry has these: no cost-of-goods-sold concept
-    # (banks, payment networks, franchisors) or no total assets supplied.
+    # Not every company has these: filers with an unclassified balance
+    # sheet (banks) don't report current assets/liabilities, and filers
+    # without a cost-of-goods-sold concept (banks, payment networks,
+    # franchisors) don't report gross profit or operating income.
+    current_ratio: Optional[float] = None
     gross_margin: Optional[float] = None
     operating_margin: Optional[float] = None
     quick_ratio: Optional[float] = None
     asset_turnover: Optional[float] = None
-
-
-class CompanyReport(Ratios):
-    revenue: float
-    net_income: float
-    shareholders_equity: float
-    # Filers with an unclassified balance sheet (e.g. banks) don't report
-    # current assets/liabilities, so these can be unavailable.
-    current_ratio: Optional[float] = None
-    quick_ratio: Optional[float] = None
-
-
-@app.post("/analyze", response_model=Ratios)
-def analyze(financials: Financials):
-    if financials.shareholders_equity == 0:
-        raise HTTPException(
-            status_code=400, detail="Shareholders' equity cannot be zero"
-        )
-    f = financials.model_dump()
-    f["inventory"] = f["inventory"] or 0  # no inventory supplied means none, not unknown
-    return Ratios(
-        company=financials.company,
-        period=financials.period,
-        net_profit_margin=net_profit_margin(f),
-        return_on_equity=return_on_equity(f),
-        debt_to_equity=debt_to_equity(f),
-        current_ratio=current_ratio(f),
-        gross_margin=gross_margin(f) if f["gross_profit"] is not None else None,
-        operating_margin=operating_margin(f) if f["operating_income"] is not None else None,
-        quick_ratio=quick_ratio(f),
-        asset_turnover=asset_turnover(f) if f["total_assets"] is not None else None,
-    )
 
 
 @app.get("/companies")

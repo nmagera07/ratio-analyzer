@@ -1,6 +1,6 @@
 # Ratio Analyzer
 
-A small financial ratio analyzer: enter a company's key financials and see net profit margin, return on equity, debt-to-equity, current ratio, gross margin, operating margin, quick ratio, and asset turnover — plus a side-by-side comparison table as you add more companies.
+A small financial ratio analyzer: pick a company from a fixed dropdown, pull its latest 10-K from SEC EDGAR, and see net profit margin, return on equity, debt-to-equity, current ratio, gross margin, operating margin, quick ratio, and asset turnover — plus a side-by-side comparison table as you add more companies.
 
 **Live:** https://ratio-web-211392956944.us-central1.run.app
 
@@ -51,9 +51,8 @@ npm run dev -- --port 5175
 
 ## API
 
-- `POST /analyze` — takes a company's financials, returns the four ratios
 - `GET /companies` — the fixed dropdown of companies with live SEC EDGAR data
-- `GET /companies/{key}/analyze` — pulls that company's latest 10-K from SEC EDGAR and returns its financials + ratios. `current_ratio` is `null` for filers with an unclassified balance sheet (e.g. banks), which don't report current assets/liabilities.
+- `GET /companies/{key}/analyze` — pulls that company's latest 10-K from SEC EDGAR and returns its financials + ratios. Some ratios are `null` for filers they don't apply to (e.g. `current_ratio` for banks, which use an unclassified balance sheet).
 
 ## Deploying
 
