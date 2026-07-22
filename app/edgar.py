@@ -73,6 +73,20 @@ DEBT_CURRENT_TAGS = [
 ]
 DEBT_SHORT_TERM_TAGS = ["CommercialPaper", "ShortTermBorrowings"]
 
+GROSS_PROFIT_TAGS = ["GrossProfit"]
+# Derived as revenue - cost_of_revenue when no direct GrossProfit tag exists.
+COST_OF_REVENUE_TAGS = [
+    "CostOfRevenue",
+    "CostOfGoodsAndServicesSold",
+    "CostOfGoodsAndServicesSoldExcludingDepreciationDepletionAndAmortization",
+]
+OPERATING_INCOME_TAGS = ["OperatingIncomeLoss"]
+# Derived as revenue - CostsAndExpenses when no direct OperatingIncomeLoss tag
+# exists. Not derived from pretax income, which also nets out non-operating
+# items (interest, etc.) and would misrepresent operating profitability.
+OPERATING_EXPENSE_TAGS = ["CostsAndExpenses"]
+INVENTORY_TAGS = ["InventoryNet", "InventoryNetOfAllowancesCustomerAdvancesAndProgressBillings"]
+
 
 def _get(url):
     global _last_request
@@ -110,7 +124,7 @@ def _anchor_period(facts):
         entries = _annual_10k(_entries(facts, tag))
         if entries:
             latest = max(entries, key=lambda e: e["end"])
-            return latest["end"], latest.get("fy")
+            return latest["end"], latest.get("fy"), latest["val"]
     raise EdgarError("No annual 10-K data found")
 
 
@@ -135,6 +149,28 @@ def _debt_at(facts, end):
     return total if found else None
 
 
+def _gross_profit_at(facts, end):
+    direct = _value_at(facts, GROSS_PROFIT_TAGS, end)
+    if direct is not None:
+        return direct
+    revenue = _value_at(facts, REVENUE_TAGS, end)
+    cost = _value_at(facts, COST_OF_REVENUE_TAGS, end)
+    if revenue is not None and cost is not None:
+        return revenue - cost
+    return None
+
+
+def _operating_income_at(facts, end):
+    direct = _value_at(facts, OPERATING_INCOME_TAGS, end)
+    if direct is not None:
+        return direct
+    revenue = _value_at(facts, REVENUE_TAGS, end)
+    expenses = _value_at(facts, OPERATING_EXPENSE_TAGS, end)
+    if revenue is not None and expenses is not None:
+        return revenue - expenses
+    return None
+
+
 def fetch_financials(key):
     """Fetch one dropdown company's latest 10-K financials from SEC EDGAR."""
     company = COMPANIES.get(key)
@@ -149,32 +185,45 @@ def fetch_financials(key):
     data = _get(f"https://data.sec.gov/api/xbrl/companyfacts/CIK{company['cik']}.json")
     facts = data.get("facts", {}).get("us-gaap", {})
 
-    end, fy = _anchor_period(facts)
+    end, fy, total_assets = _anchor_period(facts)
 
     values = {
         "revenue": _value_at(facts, REVENUE_TAGS, end),
         "net_income": _value_at(facts, NET_INCOME_TAGS, end),
         "shareholders_equity": _value_at(facts, EQUITY_TAGS, end),
         "total_debt": _debt_at(facts, end),
+        "total_assets": total_assets,
     }
     missing = [k for k, v in values.items() if v is None]
     if missing:
         raise EdgarError(f"Missing metrics for {company['name']}: {', '.join(missing)}")
 
-    # Banks and similar filers use an unclassified balance sheet and don't
-    # report these at all — current_ratio is left unavailable for them
-    # rather than treated as an error.
+    # Some filers don't report these at all: banks use an unclassified
+    # balance sheet (no current assets/liabilities), and companies without
+    # a cost-of-goods-sold concept (banks, payment networks, franchisors)
+    # have no gross profit or operating income tag either. Left unavailable
+    # for them rather than treated as an error.
     current_assets = _value_at(facts, CURRENT_ASSETS_TAGS, end)
     current_liabilities = _value_at(facts, CURRENT_LIABILITIES_TAGS, end)
+    gross_profit = _gross_profit_at(facts, end)
+    operating_income = _operating_income_at(facts, end)
+    # Missing inventory means the filer genuinely has none (services,
+    # payments, streaming) rather than that the data is unavailable.
+    inventory = _value_at(facts, INVENTORY_TAGS, end) or 0
+
+    optional_values = {
+        "current_assets": current_assets,
+        "current_liabilities": current_liabilities,
+        "gross_profit": gross_profit,
+        "operating_income": operating_income,
+    }
 
     result = {
         "company": company["name"],
         "period": f"FY {fy}" if fy else f"FY {end[:4]}",
         **{k: v / 1_000_000 for k, v in values.items()},  # to $M, matching the rest of the app
-        "current_assets": current_assets / 1_000_000 if current_assets is not None else None,
-        "current_liabilities": (
-            current_liabilities / 1_000_000 if current_liabilities is not None else None
-        ),
+        **{k: (v / 1_000_000 if v is not None else None) for k, v in optional_values.items()},
+        "inventory": inventory / 1_000_000,
     }
     with _cache_lock:
         _cache[key] = (time.monotonic(), result)

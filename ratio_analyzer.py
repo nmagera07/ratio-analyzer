@@ -29,6 +29,26 @@ def current_ratio(f):
     return f["current_assets"] / f["current_liabilities"]
 
 
+def gross_margin(f):
+    """Gross profit / revenue — what's left after direct costs of the product or service."""
+    return f["gross_profit"] / f["revenue"]
+
+
+def operating_margin(f):
+    """Operating income / revenue — profitability from core operations, before interest and taxes."""
+    return f["operating_income"] / f["revenue"]
+
+
+def quick_ratio(f):
+    """(Current assets - inventory) / current liabilities — liquidity excluding inventory, which isn't always quickly convertible to cash."""
+    return (f["current_assets"] - f["inventory"]) / f["current_liabilities"]
+
+
+def asset_turnover(f):
+    """Revenue / total assets — how efficiently assets are used to generate sales."""
+    return f["revenue"] / f["total_assets"]
+
+
 # --- Report ---------------------------------------------------------------
 
 
@@ -45,6 +65,10 @@ def print_report(f):
     print(f"{'Return on equity (ROE)':<28}{return_on_equity(f):>13.1%}")
     print(f"{'Debt-to-equity':<28}{debt_to_equity(f):>12.2f}x")
     print(f"{'Current ratio':<28}{current_ratio(f):>12.2f}x")
+    print(f"{'Gross margin':<28}{gross_margin(f):>13.1%}")
+    print(f"{'Operating margin':<28}{operating_margin(f):>13.1%}")
+    print(f"{'Quick ratio':<28}{quick_ratio(f):>12.2f}x")
+    print(f"{'Asset turnover':<28}{asset_turnover(f):>12.2f}x")
     print("=" * width)
 
 
@@ -61,6 +85,10 @@ NETFLIX_2025 = {
     "total_debt": 14_463,           # $14.5B short- + long-term debt
     "current_assets": 13_020,       # $13.0B
     "current_liabilities": 10_981,  # $11.0B
+    "gross_profit": 21_908,         # $21.9B (revenue - cost of revenue; no direct tag)
+    "operating_income": 13_327,     # $13.3B
+    "inventory": 0,                 # streaming service — no inventory
+    "total_assets": 55_597,         # $55.6B
 }
 
 
@@ -77,6 +105,10 @@ APPLE_2025 = {
     "total_debt": 98_657,           # $98.7B
     "current_assets": 147_957,      # $148.0B
     "current_liabilities": 165_631, # $165.6B
+    "gross_profit": 195_201,        # $195.2B
+    "operating_income": 133_050,    # $133.1B
+    "inventory": 5_718,             # $5.7B
+    "total_assets": 359_241,        # $359.2B
 }
 
 
@@ -90,6 +122,10 @@ def print_comparison(companies):
         ("Return on equity (ROE)", lambda f: f"{return_on_equity(f):.1%}"),
         ("Debt-to-equity", lambda f: f"{debt_to_equity(f):.2f}x"),
         ("Current ratio", lambda f: f"{current_ratio(f):.2f}x"),
+        ("Gross margin", lambda f: f"{gross_margin(f):.1%}"),
+        ("Operating margin", lambda f: f"{operating_margin(f):.1%}"),
+        ("Quick ratio", lambda f: f"{quick_ratio(f):.2f}x"),
+        ("Asset turnover", lambda f: f"{asset_turnover(f):.2f}x"),
     ]
     width = name_w + col_w * len(companies)
     print("=" * width)

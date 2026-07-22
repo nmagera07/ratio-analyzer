@@ -4,9 +4,9 @@ A staged plan, not a to-do list to rush through. Each stage should feel solid an
 
 ## Current state (baseline)
 
-- Fixed dropdown of 5 companies (Netflix, Apple, + 3 others)
-- Real data pulled live from SEC EDGAR (`companyfacts` API), tag-fallback logic for revenue/net income/assets/liabilities/equity
-- 4 ratios: net profit margin, ROE, debt-to-equity (interest-bearing debt only, not total liabilities), current ratio
+- Fixed dropdown of 16 companies spanning tech, media, retail, banking, healthcare, energy, industrials, and apparel
+- Real data pulled live from SEC EDGAR (`companyfacts` API), tag-fallback logic for revenue/net income/assets/liabilities/equity/gross profit/operating income/inventory
+- 8 ratios: net profit margin, ROE, debt-to-equity (interest-bearing debt only, not total liabilities), current ratio, gross margin, operating margin, quick ratio, asset turnover. Several are nullable and show "N/A" for companies where they don't apply (e.g. banks, franchisors)
 - In-memory cache (1hr TTL) on the FastAPI backend — no database
 - React/Vite frontend, FastAPI backend, deployed on Google Cloud Run (scale-to-zero, no persistent server)
 
@@ -15,7 +15,7 @@ A staged plan, not a to-do list to rush through. Each stage should feel solid an
 Natural next step. Low risk, extends what's already working.
 
 - [x] Expand dropdown from 5 companies to 15-20, spanning different industries (a bank's balance sheet looks nothing like Netflix's — good for seeing how ratios behave differently by sector) — 16 companies now: added JPMorgan Chase, Walmart, Costco, Visa, Johnson & Johnson, Chevron, Procter & Gamble, Home Depot, Boeing, Starbucks, Nike. JPMorgan (a bank) has no current assets/liabilities at all, so `current_ratio` is now nullable and shows "N/A" instead of erroring.
-- [ ] Add more ratios: gross margin, operating margin, quick ratio, asset turnover — same pattern as the existing four
+- [x] Add more ratios: gross margin, operating margin, quick ratio, asset turnover — same pattern as the existing four. Like current ratio, gross/operating margin and quick ratio are nullable and show "N/A" for companies without a cost-of-goods-sold concept (banks, Visa, McDonald's/Starbucks as franchisors). Verified against real EDGAR data for all 16 companies, including Boeing's quick ratio (0.40x) diverging sharply from its current ratio (1.19x) due to ~$85B of aircraft-program inventory.
 - [ ] Multi-year view per company (SEC's API already returns years of history — currently only the most recent 10-K is used)
 
 ## Stage B — Comparison & context

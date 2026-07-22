@@ -1,6 +1,6 @@
 # Ratio Analyzer
 
-A small financial ratio analyzer: enter a company's key financials and see net profit margin, return on equity, debt-to-equity, and current ratio — plus a side-by-side comparison table as you add more companies.
+A small financial ratio analyzer: enter a company's key financials and see net profit margin, return on equity, debt-to-equity, current ratio, gross margin, operating margin, quick ratio, and asset turnover — plus a side-by-side comparison table as you add more companies.
 
 **Live:** https://ratio-web-211392956944.us-central1.run.app
 
@@ -10,6 +10,12 @@ A small financial ratio analyzer: enter a company's key financials and see net p
 - **Return on equity (ROE)** = net income / shareholders' equity
 - **Debt-to-equity** = total debt (interest-bearing only) / shareholders' equity — deliberately *not* total liabilities, since non-debt obligations (deferred revenue, content licensing liabilities, etc.) aren't leverage
 - **Current ratio** = current assets / current liabilities
+- **Gross margin** = gross profit / revenue
+- **Operating margin** = operating income / revenue
+- **Quick ratio** = (current assets - inventory) / current liabilities
+- **Asset turnover** = revenue / total assets
+
+Gross margin, operating margin, quick ratio, and current ratio aren't meaningful for every company. Banks and payment networks (no cost-of-goods-sold concept, unclassified balance sheet), for example, show these as unavailable rather than a misleading number.
 
 ## Stack
 

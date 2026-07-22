@@ -6,9 +6,13 @@ from pydantic import BaseModel, Field
 
 from app.edgar import COMPANIES, EdgarError, fetch_financials
 from ratio_analyzer import (
+    asset_turnover,
     current_ratio,
     debt_to_equity,
+    gross_margin,
     net_profit_margin,
+    operating_margin,
+    quick_ratio,
     return_on_equity,
 )
 
@@ -31,6 +35,10 @@ class Financials(BaseModel):
     total_debt: float = Field(ge=0)
     current_assets: float = Field(ge=0)
     current_liabilities: float = Field(gt=0)
+    total_assets: Optional[float] = Field(default=None, ge=0)
+    gross_profit: Optional[float] = None
+    operating_income: Optional[float] = None
+    inventory: Optional[float] = Field(default=None, ge=0)
 
 
 class Ratios(BaseModel):
@@ -40,6 +48,12 @@ class Ratios(BaseModel):
     return_on_equity: float
     debt_to_equity: float
     current_ratio: float
+    # Not every company/entry has these: no cost-of-goods-sold concept
+    # (banks, payment networks, franchisors) or no total assets supplied.
+    gross_margin: Optional[float] = None
+    operating_margin: Optional[float] = None
+    quick_ratio: Optional[float] = None
+    asset_turnover: Optional[float] = None
 
 
 class CompanyReport(Ratios):
@@ -47,8 +61,9 @@ class CompanyReport(Ratios):
     net_income: float
     shareholders_equity: float
     # Filers with an unclassified balance sheet (e.g. banks) don't report
-    # current assets/liabilities, so this can be unavailable.
+    # current assets/liabilities, so these can be unavailable.
     current_ratio: Optional[float] = None
+    quick_ratio: Optional[float] = None
 
 
 @app.post("/analyze", response_model=Ratios)
@@ -58,6 +73,7 @@ def analyze(financials: Financials):
             status_code=400, detail="Shareholders' equity cannot be zero"
         )
     f = financials.model_dump()
+    f["inventory"] = f["inventory"] or 0  # no inventory supplied means none, not unknown
     return Ratios(
         company=financials.company,
         period=financials.period,
@@ -65,6 +81,10 @@ def analyze(financials: Financials):
         return_on_equity=return_on_equity(f),
         debt_to_equity=debt_to_equity(f),
         current_ratio=current_ratio(f),
+        gross_margin=gross_margin(f) if f["gross_profit"] is not None else None,
+        operating_margin=operating_margin(f) if f["operating_income"] is not None else None,
+        quick_ratio=quick_ratio(f),
+        asset_turnover=asset_turnover(f) if f["total_assets"] is not None else None,
     )
 
 
@@ -93,6 +113,10 @@ def analyze_company(key: str):
         return_on_equity=return_on_equity(f),
         debt_to_equity=debt_to_equity(f),
         current_ratio=current_ratio(f) if has_current else None,
+        gross_margin=gross_margin(f) if f["gross_profit"] is not None else None,
+        operating_margin=operating_margin(f) if f["operating_income"] is not None else None,
+        quick_ratio=quick_ratio(f) if has_current else None,
+        asset_turnover=asset_turnover(f),
         revenue=f["revenue"],
         net_income=f["net_income"],
         shareholders_equity=f["shareholders_equity"],

@@ -3,9 +3,14 @@ import "./App.css";
 
 const API_BASE = import.meta.env.PROD ? "/api" : "http://localhost:8001";
 
-const pct = (value) => `${(value * 100).toFixed(1)}%`;
+const pct = (value) => (value == null ? "N/A" : `${(value * 100).toFixed(1)}%`);
 const ratio = (value) => (value == null ? "N/A" : `${value.toFixed(2)}x`);
 const millions = (value) => `$${value.toLocaleString()}M`;
+
+function toNumberOrUndefined(value) {
+  if (value === "" || value === null || value === undefined) return undefined;
+  return Number(value);
+}
 
 const DEFAULT_FORM = {
   company: "Netflix, Inc.",
@@ -16,6 +21,10 @@ const DEFAULT_FORM = {
   total_debt: 14463,
   current_assets: 13020,
   current_liabilities: 10981,
+  total_assets: 55597,
+  gross_profit: 21908,
+  operating_income: 13327,
+  inventory: 0,
 };
 
 export default function App() {
@@ -78,6 +87,10 @@ export default function App() {
       total_debt: Number(form.total_debt),
       current_assets: Number(form.current_assets),
       current_liabilities: Number(form.current_liabilities),
+      total_assets: toNumberOrUndefined(form.total_assets),
+      gross_profit: toNumberOrUndefined(form.gross_profit),
+      operating_income: toNumberOrUndefined(form.operating_income),
+      inventory: toNumberOrUndefined(form.inventory),
     };
 
     try {
@@ -102,12 +115,16 @@ export default function App() {
   }
 
   const numberFields = [
-    ["revenue", "Revenue ($M)"],
-    ["net_income", "Net income ($M)"],
-    ["shareholders_equity", "Shareholders equity ($M)"],
-    ["total_debt", "Total debt ($M)"],
-    ["current_assets", "Current assets ($M)"],
-    ["current_liabilities", "Current liabilities ($M)"],
+    ["revenue", "Revenue ($M)", true],
+    ["net_income", "Net income ($M)", true],
+    ["shareholders_equity", "Shareholders equity ($M)", true],
+    ["total_debt", "Total debt ($M)", true],
+    ["current_assets", "Current assets ($M)", true],
+    ["current_liabilities", "Current liabilities ($M)", true],
+    ["total_assets", "Total assets ($M)", false],
+    ["gross_profit", "Gross profit ($M)", false],
+    ["operating_income", "Operating income ($M)", false],
+    ["inventory", "Inventory ($M)", false],
   ];
 
   return (
@@ -150,14 +167,14 @@ export default function App() {
             onChange={(e) => updateField("period", e.target.value)}
           />
         </label>
-        {numberFields.map(([field, label]) => (
+        {numberFields.map(([field, label, required]) => (
           <label key={field}>
             {label}
             <input
               type="number"
               value={form[field]}
               onChange={(e) => updateField(field, e.target.value)}
-              required
+              required={required}
             />
           </label>
         ))}
@@ -197,6 +214,22 @@ export default function App() {
                   <div className="stat">
                     <span className="label">Current Ratio</span>
                     <span className="value">{ratio(latest.current_ratio)}</span>
+                  </div>
+                  <div className="stat">
+                    <span className="label">Gross Margin</span>
+                    <span className="value">{pct(latest.gross_margin)}</span>
+                  </div>
+                  <div className="stat">
+                    <span className="label">Operating Margin</span>
+                    <span className="value">{pct(latest.operating_margin)}</span>
+                  </div>
+                  <div className="stat">
+                    <span className="label">Quick Ratio</span>
+                    <span className="value">{ratio(latest.quick_ratio)}</span>
+                  </div>
+                  <div className="stat">
+                    <span className="label">Asset Turnover</span>
+                    <span className="value">{ratio(latest.asset_turnover)}</span>
                   </div>
                 </>
               );
@@ -270,6 +303,30 @@ export default function App() {
                   <td>Current ratio</td>
                   {companies.map((c) => (
                     <td key={c.company}>{ratio(c.current_ratio)}</td>
+                  ))}
+                </tr>
+                <tr>
+                  <td>Gross margin</td>
+                  {companies.map((c) => (
+                    <td key={c.company}>{pct(c.gross_margin)}</td>
+                  ))}
+                </tr>
+                <tr>
+                  <td>Operating margin</td>
+                  {companies.map((c) => (
+                    <td key={c.company}>{pct(c.operating_margin)}</td>
+                  ))}
+                </tr>
+                <tr>
+                  <td>Quick ratio</td>
+                  {companies.map((c) => (
+                    <td key={c.company}>{ratio(c.quick_ratio)}</td>
+                  ))}
+                </tr>
+                <tr>
+                  <td>Asset turnover</td>
+                  {companies.map((c) => (
+                    <td key={c.company}>{ratio(c.asset_turnover)}</td>
                   ))}
                 </tr>
               </tbody>
